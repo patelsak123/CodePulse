@@ -1,0 +1,134 @@
+/* Login Page */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+
+  background:
+    radial-gradient(circle at 80% 20%, #ffffff55, transparent 30%),
+    radial-gradient(circle at 20% 80%, #a78bfa55, transparent 35%),
+    linear-gradient(135deg, #ede9fe, #f8fafc, #e0e7ff);
+
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "Segoe UI", sans-serif;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 390px;
+  padding: 35px 28px;
+
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 30px;
+
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+
+  box-shadow:
+    0 20px 50px rgba(15, 23, 42, 0.12),
+    inset 0 1px 1px rgba(255, 255, 255, 0.8);
+}
+
+.login-title {
+  text-align: center;
+  font-size: 32px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.login-subtitle {
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+  margin-bottom: 28px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.login-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 15px 17px;
+
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 16px;
+
+  background: rgba(255, 255, 255, 0.55);
+
+  color: #111827;
+  font-size: 15px;
+  outline: none;
+
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+
+  transition: 0.25s ease;
+}
+
+.login-input::placeholder {
+  color: #64748b;
+}
+
+.login-input:focus {
+  border-color: rgba(99, 102, 241, 0.5);
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.login-button {
+  margin-top: 8px;
+  padding: 15px;
+
+  border: none;
+  border-radius: 16px;
+
+  background: rgba(17, 24, 39, 0.9);
+  color: white;
+
+  font-size: 16px;
+  font-weight: 600;
+
+  cursor: pointer;
+  transition: 0.25s ease;
+}
+
+.login-button:hover {
+  transform: translateY(-2px);
+  background: #111827;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.2);
+}
+
+.login-button:active {
+  transform: scale(0.98);
+}
+
+.login-message {
+  text-align: center;
+  margin-top: 18px;
+  font-size: 14px;
+  color: #334155;
+}
+
+@media (max-width: 480px) {
+  .login-page {
+    padding: 16px;
+  }
+
+  .login-card {
+    padding: 30px 22px;
+    border-radius: 27px;
+  }
+
+  .login-title {
+    font-size: 28px;
+  }
+}

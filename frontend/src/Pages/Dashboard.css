@@ -1,0 +1,138 @@
+.dashboard-page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+
+  background:
+    radial-gradient(circle at top left, #dbeafe, transparent 40%),
+    radial-gradient(circle at bottom right, #f3e8ff, transparent 40%),
+    #f5f5f7;
+
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "Segoe UI", sans-serif;
+}
+
+.dashboard-card {
+  width: 100%;
+  max-width: 430px;
+  padding: 40px 30px;
+
+  text-align: center;
+
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 32px;
+
+  box-shadow:
+    0 25px 60px rgba(0, 0, 0, 0.12);
+}
+
+.dashboard-icon {
+  width: 70px;
+  height: 70px;
+
+  margin: 0 auto 20px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 32px;
+
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 22px;
+
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-card h1 {
+  margin: 0;
+
+  font-size: 32px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.dashboard-subtitle {
+  margin: 10px 0 30px;
+
+  color: #6b7280;
+  font-size: 15px;
+}
+
+.user-info {
+  padding: 20px;
+
+  text-align: left;
+
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 22px;
+
+  margin-bottom: 25px;
+}
+
+.user-info p {
+  margin: 0 0 18px;
+
+  color: #111827;
+  font-size: 16px;
+}
+
+.user-info p:last-child {
+  margin-bottom: 0;
+}
+
+.user-info span {
+  display: block;
+
+  margin-bottom: 5px;
+
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.logout-button {
+  width: 100%;
+  padding: 15px;
+
+  border: none;
+  border-radius: 16px;
+
+  background: #111827;
+  color: white;
+
+  font-size: 16px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.logout-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+.logout-button:active {
+  transform: scale(0.98);
+}
+
+@media (max-width: 480px) {
+  .dashboard-card {
+    padding: 35px 22px;
+    border-radius: 28px;
+  }
+
+  .dashboard-card h1 {
+    font-size: 28px;
+  }
+}
