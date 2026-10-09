@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const User = require("./models/User");
 const bcrypt = require("bcrypt");
+require("dotenv").config();
 
 const app = express();
 const PORT = 5001;
@@ -122,6 +123,43 @@ app.post("/login", async (req, res) => {
   }
 });
 
+// Fetches repositories accessible to the configured GitHub token.
+app.get("/api/github/repos", async (req, res) => {
+  try {
+    const response = await fetch("https://api.github.com/user/repos?sort=updated&per_page=30", {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        message: "GitHub API request failed",
+      });
+    }
+
+    const repos = await response.json();
+
+    res.json(
+      repos.map((repo) => ({
+        id: repo.id,
+        name: repo.name,
+        fullName: repo.full_name,
+        description: repo.description,
+        language: repo.language,
+        isPrivate: repo.private,
+        url: repo.html_url,
+        stars: repo.stargazers_count,
+      }))
+    );
+  } catch (error) {
+    console.error("GitHub API Error:", error.message);
+    res.status(500).json({ message: "Unable to fetch repositories" });
+  }
+});
+
 // =======================
 // MongoDB Connection
 // =======================
@@ -138,3 +176,7 @@ mongoose
   .catch((error) => {
     console.log("MongoDB connection error:", error);
   });
+  console.log(
+  "GitHub token loaded:",
+  Boolean(process.env.GITHUB_TOKEN)
+);
