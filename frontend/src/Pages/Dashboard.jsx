@@ -1,16 +1,29 @@
-
 import { useEffect, useState } from "react";
+import RepositoriesPage from "./RepositoriesPage";
 import "./Dashboard.css";
 
-// Renders the CodePulse analytics dashboard and workspace navigation.
+// Main Dashboard component handling navigation, repository overview and workspace metrics
 function Dashboard({ user, onLogout }) {
+  // Navigation and active view state
   const [activePage, setActivePage] = useState("dashboard");
+  // Repository dataset and selection state
   const [repositories, setRepositories] = useState([]);
+  const [selectedRepo, setSelectedRepo] = useState(null);
+  const [repoContents, setRepoContents] = useState([]);
+  // Global repository load state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Active file content view state
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  // Folder directory contents load state
+  const [contentsLoading, setContentsLoading] = useState(false);
+  const [contentsError, setContentsError] = useState("");
 
+  // Extracted user first name for welcome display
   const firstName = user?.name?.trim().split(/\s+/)[0] || "Developer";
 
+  // Sidebar navigation links configuration
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: "▦" },
     { id: "repositories", label: "Repositories", icon: "⌘" },
@@ -18,12 +31,14 @@ function Dashboard({ user, onLogout }) {
     { id: "history", label: "History", icon: "↺" },
   ];
 
-  // Loads repository details from the existing backend endpoint.
+  // Fetch all repositories from backend API on initial mount
   useEffect(() => {
     const fetchRepositories = async () => {
       try {
         const response = await fetch("http://localhost:5001/api/github/repos");
-        if (!response.ok) throw new Error("Unable to load GitHub repositories.");
+        if (!response.ok) {
+          throw new Error("Unable to load GitHub repositories.");
+        }
         const data = await response.json();
         setRepositories(data);
         setError("");
@@ -33,29 +48,82 @@ function Dashboard({ user, onLogout }) {
         setLoading(false);
       }
     };
-
     fetchRepositories();
   }, []);
 
-  // Changes the active workspace page.
+  // Switch between workspace pages
   const handleNavigation = (page) => setActivePage(page);
 
+  // Fetch directory contents or files for a given repository path
+  const fetchRepoContents = async (repo, path = "") => {
+    setSelectedRepo(repo);
+    setSelectedFile(null);
+    setRepoContents([]);
+    setContentsError("");
+    setContentsLoading(true);
+    setActivePage("repositories");
+    try {
+      const query = path ? `?path=${encodeURIComponent(path)}` : "";
+      const response = await fetch(
+        `http://localhost:5001/api/github/repos/${repo.fullName}/contents${query}`
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to load repository files.");
+      }
+      setRepoContents(data.contents || []);
+    } catch (err) {
+      setContentsError(err.message || "Unable to load repository files.");
+      console.error("Repository files error:", err);
+    } finally {
+      setContentsLoading(false);
+    }
+  };
+
+  // Load code content of a specific repository file
+  const openRepoFile = async (item) => {
+    if (!selectedRepo) return;
+    setSelectedFile({ name: item.name, path: item.path, content: "" });
+    setFileLoading(true);
+    try {
+      const response = await fetch(
+        `http://localhost:5001/api/github/repos/${selectedRepo.fullName}/file?path=${encodeURIComponent(item.path)}`
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to load file.");
+      }
+      setSelectedFile(data);
+    } catch (err) {
+      setSelectedFile({
+        name: item.name,
+        path: item.path,
+        content: `Error: ${err.message}`,
+      });
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
+  // Compute active page title for top bar
   const pageTitle =
     navItems.find((item) => item.id === activePage)?.label || "Dashboard";
 
   return (
     <div className="cp-app">
+      {/* Sidebar navigation container */}
       <aside className="cp-sidebar">
+        {/* Workspace branding logo and title */}
         <div className="cp-brand">
-          <div className="cp-brand-icon">&lt;/&gt;</div>
+          <div className="cp-brand-icon" />
           <div>
             <h2>CodePulse</h2>
             <span>Developer Intelligence</span>
           </div>
         </div>
 
+        {/* Navigation menu list */}
         <div className="cp-nav-label">WORKSPACE</div>
-
         <nav className="cp-navigation" aria-label="Main navigation">
           {navItems.map((item) => (
             <button
@@ -73,10 +141,9 @@ function Dashboard({ user, onLogout }) {
           ))}
         </nav>
 
+        {/* User profile summary and logout button at bottom */}
         <div className="cp-sidebar-bottom">
-          <div className="cp-user-avatar">
-            {firstName.charAt(0).toUpperCase()}
-          </div>
+          <div className="cp-user-avatar">{firstName.charAt(0).toUpperCase()}</div>
           <div className="cp-user-summary">
             <strong>{firstName}</strong>
             <span>CodePulse account</span>
@@ -93,7 +160,9 @@ function Dashboard({ user, onLogout }) {
         </div>
       </aside>
 
+      {/* Main workspace layout area */}
       <main className="cp-main">
+        {/* Workspace top navigation bar */}
         <header className="cp-topbar">
           <div>
             <div className="cp-breadcrumb">Workspace / {pageTitle}</div>
@@ -105,16 +174,20 @@ function Dashboard({ user, onLogout }) {
           </div>
         </header>
 
+        {/* Dynamic page content container */}
         <div className="cp-content">
+          {/* Main dashboard overview view */}
           {activePage === "dashboard" && (
             <>
+              {/* Welcome banner section */}
               <section className="cp-welcome">
                 <div className="cp-welcome-copy">
                   <span className="cp-eyebrow">ENGINEERING PERFORMANCE WORKSPACE</span>
-                  <h2>Your code. Your progress. <span>One pulse.</span></h2>
+                  <h2>
+                    Your code. Your progress. <span>One pulse.</span>
+                  </h2>
                   <p>
-                    Welcome back, {firstName}. Explore your GitHub repositories
-                    and prepare to turn code into actionable insights.
+                    Welcome back, {firstName}. Explore your GitHub repositories and prepare to turn code into actionable insights.
                   </p>
                   <button
                     className="cp-primary-button"
@@ -124,15 +197,10 @@ function Dashboard({ user, onLogout }) {
                     Explore repositories <span>↗</span>
                   </button>
                 </div>
-                <div className="cp-welcome-art" aria-hidden="true">
-                  <div className="cp-art-ring cp-art-ring-one" />
-                  <div className="cp-art-ring cp-art-ring-two" />
-                  <div className="cp-art-core">&lt;/&gt;</div>
-                  <span className="cp-art-dot cp-art-dot-one" />
-                  <span className="cp-art-dot cp-art-dot-two" />
-                </div>
+                <div className="cp-welcome-art" aria-hidden="true" />
               </section>
 
+              {/* Key performance metrics grid */}
               <section className="cp-metrics-grid">
                 <MetricCard
                   icon="⌘"
@@ -165,8 +233,8 @@ function Dashboard({ user, onLogout }) {
                     loading
                       ? "…"
                       : error
-                        ? "—"
-                        : repositories.filter((repo) => !repo.isPrivate).length
+                      ? "—"
+                      : repositories.filter((repo) => !repo.isPrivate).length
                   }
                   description="Public GitHub repositories"
                   tone="blue"
@@ -174,14 +242,15 @@ function Dashboard({ user, onLogout }) {
                 />
               </section>
 
+              {/* Analytics overview and quality gauge panel grid */}
               <div className="cp-analytics-grid">
+                {/* Repository trends and quick list panel */}
                 <section className="cp-panel cp-trends-panel">
                   <PanelHeading
                     title="Repository overview"
                     subtitle="Your connected GitHub workspace"
                     tag={loading ? "SYNCING" : error ? "OFFLINE" : "GITHUB DATA"}
                   />
-
                   <div className="cp-repo-summary">
                     <div>
                       <span className="cp-summary-label">TOTAL REPOSITORIES</span>
@@ -193,6 +262,7 @@ function Dashboard({ user, onLogout }) {
                     <div className="cp-summary-icon">⌘</div>
                   </div>
 
+                  {/* Dynamic repository snapshot listing */}
                   {loading ? (
                     <div className="cp-message-state">Loading your repositories…</div>
                   ) : error ? (
@@ -230,6 +300,7 @@ function Dashboard({ user, onLogout }) {
                     </div>
                   )}
 
+                  {/* Navigation shortcut to full repositories tab */}
                   {!loading && !error && repositories.length > 4 && (
                     <button
                       className="cp-text-button"
@@ -241,6 +312,7 @@ function Dashboard({ user, onLogout }) {
                   )}
                 </section>
 
+                {/* Code quality indicators and progress preview */}
                 <section className="cp-panel cp-quality-panel">
                   <PanelHeading
                     title="Quality vs speed"
@@ -260,30 +332,65 @@ function Dashboard({ user, onLogout }) {
                     Connect code analysis to calculate a meaningful project score.
                   </p>
                   <div className="cp-quality-stats">
-                    <div><span className="cp-quality-dot blue" /><span>Code quality</span><strong>—</strong></div>
-                    <div><span className="cp-quality-dot teal" /><span>Test coverage</span><strong>—</strong></div>
-                    <div><span className="cp-quality-dot purple" /><span>Review depth</span><strong>—</strong></div>
+                    <div>
+                      <span className="cp-quality-dot blue" />
+                      <span>Code quality</span>
+                      <strong>—</strong>
+                    </div>
+                    <div>
+                      <span className="cp-quality-dot teal" />
+                      <span>Test coverage</span>
+                      <strong>—</strong>
+                    </div>
+                    <div>
+                      <span className="cp-quality-dot purple" />
+                      <span>Review depth</span>
+                      <strong>—</strong>
+                    </div>
                   </div>
                 </section>
               </div>
 
+              {/* Bottom panels: Insights, language breakdown, and recent repositories */}
               <div className="cp-bottom-grid">
+                {/* AI & workspace developer insights panel */}
                 <section className="cp-panel cp-insights-panel">
-                  <PanelHeading
-                    title="Developer insights"
-                    subtitle="Your workspace at a glance"
+                  <PanelHeading title="Developer insights" subtitle="Your workspace at a glance" />
+                  <InsightRow
+                    icon="⌘"
+                    tone="blue"
+                    title="GitHub connected"
+                    text={
+                      loading
+                        ? "Checking repositories…"
+                        : error
+                        ? "Repository data unavailable"
+                        : `${repositories.length} repositories loaded from GitHub`
+                    }
                   />
-                  <InsightRow icon="⌘" tone="blue" title="GitHub connected" text={`${loading ? "Checking repositories…" : error ? "Repository data unavailable" : `${repositories.length} repositories loaded from GitHub`}`} />
-                  <InsightRow icon="✳" tone="purple" title="AI code intelligence" text="Gemini-powered analysis will be added in the next phase." />
-                  <InsightRow icon="◇" tone="teal" title="Code health metrics" text="Health scores will appear after repository analysis is implemented." />
-                  <InsightRow icon="↗" tone="amber" title="Next milestone" text="Explore a repository and prepare it for codebase analysis." />
+                  <InsightRow
+                    icon="✳"
+                    tone="purple"
+                    title="AI code intelligence"
+                    text="Gemini-powered analysis will be added in the next phase."
+                  />
+                  <InsightRow
+                    icon="◇"
+                    tone="teal"
+                    title="Code health metrics"
+                    text="Health scores will appear after repository analysis is implemented."
+                  />
+                  <InsightRow
+                    icon="↗"
+                    tone="amber"
+                    title="Next milestone"
+                    text="Explore a repository and prepare it for codebase analysis."
+                  />
                 </section>
 
+                {/* Stars counter and repository language breakdown panel */}
                 <section className="cp-panel cp-activity-panel">
-                  <PanelHeading
-                    title="Workspace activity"
-                    subtitle="GitHub repository snapshot"
-                  />
+                  <PanelHeading title="Workspace activity" subtitle="GitHub repository snapshot" />
                   <div className="cp-activity-total">
                     <div>
                       <span className="cp-summary-label">TOTAL STARS</span>
@@ -291,8 +398,10 @@ function Dashboard({ user, onLogout }) {
                         {loading
                           ? "…"
                           : error
-                            ? "—"
-                            : repositories.reduce((total, repo) => total + (repo.stars || 0), 0).toLocaleString()}
+                          ? "—"
+                          : repositories
+                              .reduce((total, repo) => total + (repo.stars || 0), 0)
+                              .toLocaleString()}
                       </strong>
                     </div>
                     <span className="cp-activity-icon">★</span>
@@ -312,11 +421,9 @@ function Dashboard({ user, onLogout }) {
                   )}
                 </section>
 
+                {/* Quick shortcut to recently updated repositories */}
                 <section className="cp-panel cp-recent-panel">
-                  <PanelHeading
-                    title="Recently available"
-                    subtitle="Repositories from your GitHub account"
-                  />
+                  <PanelHeading title="Recently available" subtitle="Repositories from your GitHub account" />
                   {loading ? (
                     <p className="cp-muted-text">Loading repositories…</p>
                   ) : error ? (
@@ -332,8 +439,11 @@ function Dashboard({ user, onLogout }) {
                         rel="noreferrer"
                         key={repo.id}
                       >
-                        <span className="cp-recent-repo-icon">&lt;/&gt;</span>
-                        <span><strong>{repo.name}</strong><small>{repo.fullName}</small></span>
+                        <span className="cp-recent-repo-icon" />
+                        <span>
+                          <strong>{repo.name}</strong>
+                          <small>{repo.fullName}</small>
+                        </span>
                         <span className="cp-recent-arrow">↗</span>
                       </a>
                     ))
@@ -341,48 +451,43 @@ function Dashboard({ user, onLogout }) {
                 </section>
               </div>
 
+              {/* Workspace footer */}
               <footer className="cp-footer">
-                <span>CodePulse <span className="cp-footer-dot">●</span> Developer Intelligence</span>
+                <span>
+                  CodePulse <span className="cp-footer-dot">●</span> Developer Intelligence
+                </span>
                 <span>AI analysis features are under development.</span>
               </footer>
             </>
           )}
 
+          {/* Repositories page delegated to modular component */}
           {activePage === "repositories" && (
-            <section className="cp-panel cp-repositories-page">
-              <PanelHeading
-                title="Your repositories"
-                subtitle="Repositories accessible to your configured GitHub token"
-                tag={loading ? "SYNCING" : error ? "OFFLINE" : "CONNECTED"}
-              />
-              {loading ? (
-                <div className="cp-message-state">Loading repositories…</div>
-              ) : error ? (
-                <div className="cp-message-state">
-                  <p>{error}</p>
-                  <button
-                    className="cp-secondary-button"
-                    type="button"
-                    onClick={() => window.location.reload()}
-                  >
-                    Retry connection
-                  </button>
-                </div>
-              ) : repositories.length === 0 ? (
-                <div className="cp-message-state">No repositories found. Check your GitHub token permissions.</div>
-              ) : (
-                <div className="cp-repository-grid">
-                  {repositories.map((repo) => (
-                    <RepositoryCard key={repo.id} repo={repo} />
-                  ))}
-                </div>
-              )}
-            </section>
+            <RepositoriesPage
+              loading={loading}
+              error={error}
+              repositories={repositories}
+              selectedRepo={selectedRepo}
+              repoContents={repoContents}
+              selectedFile={selectedFile}
+              fileLoading={fileLoading}
+              contentsLoading={contentsLoading}
+              contentsError={contentsError}
+              fetchRepoContents={fetchRepoContents}
+              openRepoFile={openRepoFile}
+              setSelectedRepo={setSelectedRepo}
+              setRepoContents={setRepoContents}
+              setSelectedFile={setSelectedFile}
+              setContentsError={setContentsError}
+            />
           )}
 
+          {/* Placeholders for upcoming AI analysis and history features */}
           {["analysis", "history"].includes(activePage) && (
             <section className="cp-panel cp-future-panel">
-              <div className="cp-future-icon">{activePage === "analysis" ? "✳" : "↺"}</div>
+              <div className="cp-future-icon">
+                {activePage === "analysis" ? "✳" : "↺"}
+              </div>
               <span className="cp-eyebrow">COMING IN THE NEXT PHASE</span>
               <h2>{activePage === "analysis" ? "AI Code Analysis" : "Analysis History"}</h2>
               <p>
@@ -405,7 +510,7 @@ function Dashboard({ user, onLogout }) {
   );
 }
 
-// Displays a metric card with a decorative trend line, not live analytics.
+// Reusable card showing a single metric with icon, value and sparkline graphic
 function MetricCard({ icon, label, value, description, tone, points }) {
   return (
     <article className={`cp-metric-card tone-${tone}`}>
@@ -425,7 +530,7 @@ function MetricCard({ icon, label, value, description, tone, points }) {
   );
 }
 
-// Displays a reusable section title and optional status label.
+// Reusable panel header for dashboard cards
 function PanelHeading({ title, subtitle, tag }) {
   return (
     <div className="cp-panel-heading">
@@ -438,25 +543,33 @@ function PanelHeading({ title, subtitle, tag }) {
   );
 }
 
-// Displays one short insight row.
+// Single insight row displaying tone icon, title and description
 function InsightRow({ icon, tone, title, text }) {
   return (
     <div className="cp-insight-row">
       <span className={`cp-insight-icon tone-${tone}`}>{icon}</span>
-      <div><strong>{title}</strong><p>{text}</p></div>
+      <div>
+        <strong>{title}</strong>
+        <p>{text}</p>
+      </div>
     </div>
   );
 }
 
-// Calculates repository language counts from the GitHub API response.
+// Visual breakdown bars for top repository programming languages
 function LanguageBreakdown({ repositories }) {
+  // Tally repository counts per programming language
   const counts = repositories.reduce((result, repo) => {
     const language = repo.language || "Other";
     result[language] = (result[language] || 0) + 1;
     return result;
   }, {});
 
-  const languages = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  // Extract top 4 languages sorted by frequency
+  const languages = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+
   const total = repositories.length;
 
   return (
@@ -477,30 +590,6 @@ function LanguageBreakdown({ repositories }) {
         </div>
       ))}
     </div>
-  );
-}
-
-// Displays a repository card with actual GitHub metadata.
-function RepositoryCard({ repo }) {
-  return (
-    <article className="cp-repo-card">
-      <div className="cp-repo-card-top">
-        <span className="cp-repo-icon">⌘</span>
-        <span className={`cp-repo-visibility ${repo.isPrivate ? "private" : ""}`}>
-          {repo.isPrivate ? "Private" : "Public"}
-        </span>
-      </div>
-      <h3>{repo.name}</h3>
-      <p className="cp-repo-fullname">{repo.fullName}</p>
-      <p className="cp-repo-description">{repo.description || "No description provided."}</p>
-      <div className="cp-repo-meta">
-        <span><span className="cp-language-dot" />{repo.language || "Not specified"}</span>
-        <span>★ {repo.stars}</span>
-      </div>
-      <a className="cp-repo-link" href={repo.url} target="_blank" rel="noreferrer">
-        Open on GitHub ↗
-      </a>
-    </article>
   );
 }
 

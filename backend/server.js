@@ -126,13 +126,17 @@ app.post("/login", async (req, res) => {
 // Fetches repositories accessible to the configured GitHub token.
 app.get("/api/github/repos", async (req, res) => {
   try {
-    const response = await fetch("https://api.github.com/user/repos?sort=updated&per_page=30", {
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
+    
+const response = await fetch(
+  "https://api.github.com/user/repos?sort=updated&per_page=30",
+  {
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  }
+);
 
     if (!response.ok) {
       return res.status(response.status).json({
@@ -160,6 +164,84 @@ app.get("/api/github/repos", async (req, res) => {
   }
 });
 
+ // ===============================
+ // REPOSITORY FILE TREE API
+ // ===============================
+
+app.get("/api/github/repos/:owner/:repo/contents", async (req, res) => {
+  try {
+    // 1. Check whether GitHub token exists
+    if (!process.env.GITHUB_TOKEN) {
+      return res.status(500).json({
+        message: "GitHub token is not configured",
+      });
+    }
+
+    // 2. Get owner and repository name from URL
+    const { owner, repo } = req.params;
+
+    // 3. Get optional folder path from query
+    const path = req.query.path || "";
+
+    // 4. Build GitHub API URL
+    const encodedPath = path
+      .split("/")
+      .filter(Boolean)
+      .map(encodeURIComponent)
+      .join("/");
+
+    const githubUrl =
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents` +
+      (encodedPath ? `/${encodedPath}` : "");
+
+    // 5. Request files and folders from GitHub
+    const response = await fetch(githubUrl, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+
+    // 6. Handle GitHub API errors
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+
+      return res.status(response.status).json({
+        message: "Failed to fetch repository contents",
+        error: errorData.message || "GitHub API request failed",
+      });
+    }
+
+    // 7. Read GitHub response
+    const contents = await response.json();
+
+    // 8. Return a consistent list of file/folder details
+    const items = Array.isArray(contents) ? contents : [contents];
+
+    return res.status(200).json({
+      owner,
+      repository: repo,
+      path,
+      contents: items.map((item) => ({
+        name: item.name,
+        path: item.path,
+        type: item.type,
+        size: item.size,
+        url: item.html_url,
+        downloadUrl: item.download_url,
+      })),
+    });
+  } catch (error) {
+    console.error("File Tree API Error:", error.message);
+
+    return res.status(500).json({
+      message: "Unable to fetch repository contents",
+    });
+  }
+});
+
+
 // =======================
 // MongoDB Connection
 // =======================
@@ -167,6 +249,70 @@ mongoose
   .connect("mongodb://127.0.0.1:27017/codepulse")
   .then(() => {
     console.log("MongoDB connected successfully!");
+
+app.get("/api/github/repos/:owner/:repo/file", async (req, res) => {
+  try {
+    if (!process.env.GITHUB_TOKEN) {
+      return res.status(500).json({
+        message: "GitHub token is not configured",
+      });
+    }
+
+    const { owner, repo } = req.params;
+    const path = req.query.path;
+
+    if (!path) {
+      return res.status(400).json({
+        message: "File path is required",
+      });
+    }
+
+    const encodedPath = path
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/");
+
+    const url =
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}`;
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        message: data.message || "Unable to fetch file",
+      });
+    }
+
+    if (data.type !== "file" || !data.content) {
+      return res.status(400).json({
+        message: "This path is not a supported file",
+      });
+    }
+
+    const content = Buffer.from(data.content, "base64").toString("utf8");
+
+    return res.json({
+      name: data.name,
+      path: data.path,
+      content,
+    });
+  } catch (error) {
+    console.error("File Content API Error:", error.message);
+
+    return res.status(500).json({
+      message: "Unable to fetch file content",
+    });
+  }
+});
+
 
     // Start server after MongoDB connection
     app.listen(PORT, () => {
