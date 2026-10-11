@@ -241,15 +241,6 @@ app.get("/api/github/repos/:owner/:repo/contents", async (req, res) => {
   }
 });
 
-
-// =======================
-// MongoDB Connection
-// =======================
-mongoose
-  .connect("mongodb://127.0.0.1:27017/codepulse")
-  .then(() => {
-    console.log("MongoDB connected successfully!");
-
 app.get("/api/github/repos/:owner/:repo/file", async (req, res) => {
   try {
     if (!process.env.GITHUB_TOKEN) {
@@ -313,16 +304,90 @@ app.get("/api/github/repos/:owner/:repo/file", async (req, res) => {
   }
 });
 
-
-    // Start server after MongoDB connection
-    app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+app.get("/api/github/repos/:owner/:repo/image", async (req, res) => {
+  try {
+    if (!process.env.GITHUB_TOKEN) {
+      return res.status(500).json({ message: "GitHub token is not configured" });
+    }
+    const { owner, repo } = req.params;
+    const path = req.query.path;
+    if (!path) {
+      return res.status(400).json({ message: "File path is required" });
+    }
+    const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}`;
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
     });
+    const data = await response.json();
+    if (!response.ok) {
+      return res.status(response.status).json({ message: data.message || "Unable to fetch file" });
+    }
+    if (data.type !== "file") {
+      return res.status(400).json({ message: "Path is not a file" });
+    }
+    let buffer;
+    if (data.content) {
+      buffer = Buffer.from(data.content.replace(/\s/g, ""), "base64");
+    } else if (data.download_url) {
+      const rawRes = await fetch(data.download_url, {
+        headers: {
+          Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+        },
+      });
+      if (!rawRes.ok) {
+        return res.status(rawRes.status).json({ message: "Unable to download image binary" });
+      }
+      const arrayBuffer = await rawRes.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+    } else {
+      return res.status(400).json({ message: "Image content not available" });
+    }
+
+    const ext = path.split('.').pop().toLowerCase();
+    const mimeMap = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      svg: "image/svg+xml",
+      bmp: "image/bmp",
+      ico: "image/x-icon",
+      avif: "image/avif",
+    };
+    const mimeType = mimeMap[ext] || "application/octet-stream";
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Cache-Control", "public, max-age=300");
+    return res.send(buffer);
+  } catch (error) {
+    console.error("Image API Error:", error.message);
+    res.status(500).json({ message: "Unable to fetch image" });
+  }
+});
+
+// =======================
+// MongoDB Connection
+// =======================
+const MONGO_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/codepulse";
+
+mongoose
+  .connect(MONGO_URI)
+  .then(() => {
+    console.log("MongoDB connected successfully!");
   })
   .catch((error) => {
-    console.log("MongoDB connection error:", error);
+    console.error("MongoDB connection error:", error.message);
   });
-  console.log(
-  "GitHub token loaded:",
-  Boolean(process.env.GITHUB_TOKEN)
-);
+
+// =======================
+// Start Server
+// =======================
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+  console.log("GitHub token loaded:", Boolean(process.env.GITHUB_TOKEN));
+});

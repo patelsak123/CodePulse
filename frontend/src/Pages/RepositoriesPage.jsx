@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./Dashboard.css";
 
 // Reusable section header displaying title, subtitle and an optional status tag
@@ -42,7 +42,7 @@ function RepositoryCard({ repo, onExplore }) {
   );
 }
 
-// Repositories view handling repository browsing, file navigation and code viewing
+// Repositories view handling repository browsing, file navigation, image viewing, and code viewing
 function RepositoriesPage({
   loading,
   error,
@@ -60,6 +60,82 @@ function RepositoriesPage({
   setSelectedFile,
   setContentsError,
 }) {
+  const [imageCache, setImageCache] = useState({});
+  const createdUrlsRef = useRef([]);
+
+  // Revoke any created object URLs on unmount to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      createdUrlsRef.current.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (_) {}
+      });
+    };
+  }, []);
+
+  const isImageFile = (fileName) => {
+    return /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i.test(fileName || "");
+  };
+
+  const openImageFile = async (item) => {
+    if (!selectedRepo) return;
+    const cacheKey = `${selectedRepo.fullName}:${item.path}`;
+
+    if (imageCache[cacheKey]) {
+      setSelectedFile({
+        name: item.name,
+        path: item.path,
+        isImage: true,
+        imageUrl: imageCache[cacheKey],
+        loading: false,
+      });
+      return;
+    }
+
+    setSelectedFile({
+      name: item.name,
+      path: item.path,
+      isImage: true,
+      imageUrl: null,
+      loading: true,
+    });
+
+    try {
+      const response = await fetch(
+        `http://localhost:5001/api/github/repos/${selectedRepo.fullName}/image?path=${encodeURIComponent(item.path)}`
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to load image (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      createdUrlsRef.current.push(objectUrl);
+
+      setImageCache((prev) => ({ ...prev, [cacheKey]: objectUrl }));
+
+      setSelectedFile({
+        name: item.name,
+        path: item.path,
+        isImage: true,
+        imageUrl: objectUrl,
+        loading: false,
+      });
+    } catch (err) {
+      setSelectedFile({
+        name: item.name,
+        path: item.path,
+        isImage: true,
+        imageUrl: null,
+        error: err.message || "Failed to load image",
+        loading: false,
+      });
+    }
+  };
+
   return (
     <section className="cp-panel cp-repositories-page">
       {selectedRepo ? (
@@ -120,7 +196,56 @@ function RepositoriesPage({
                     </button>
                   </div>
                   <div className="cp-file-code">
-                    {fileLoading ? (
+                    {selectedFile.isImage ? (
+                      selectedFile.loading ? (
+                        <div className="cp-message-state" style={{ padding: "40px" }}>
+                          <p>Loading image preview…</p>
+                        </div>
+                      ) : selectedFile.error ? (
+                        <div className="cp-message-state" style={{ padding: "40px" }}>
+                          <p style={{ color: "#ef4444", marginBottom: "12px" }}>
+                            {selectedFile.error}
+                          </p>
+                          <button
+                            className="cp-secondary-button"
+                            type="button"
+                            onClick={() =>
+                              openImageFile({
+                                name: selectedFile.name,
+                                path: selectedFile.path,
+                              })
+                            }
+                          >
+                            Retry loading image
+                          </button>
+                        </div>
+                      ) : (
+                        <div
+                          className="cp-image-preview-wrapper"
+                          style={{
+                            display: "flex",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            padding: "24px 16px",
+                            background: "#0d111a",
+                            borderRadius: "8px",
+                          }}
+                        >
+                          <img
+                            src={selectedFile.imageUrl}
+                            alt={selectedFile.name}
+                            style={{
+                              maxWidth: "100%",
+                              maxHeight: "520px",
+                              objectFit: "contain",
+                              borderRadius: "6px",
+                              border: "1px solid rgba(255, 255, 255, 0.1)",
+                              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
+                            }}
+                          />
+                        </div>
+                      )
+                    ) : fileLoading ? (
                       <p>Loading file content…</p>
                     ) : (
                       <pre>
@@ -138,28 +263,39 @@ function RepositoriesPage({
                 </div>
               ) : (
                 <div className="cp-mini-repo-list">
-                  {repoContents.map((item) => (
-                    <button
-                      className="cp-mini-repo"
-                      key={item.path}
-                      type="button"
-                      onClick={() => {
-                        if (item.type === "dir") {
-                          fetchRepoContents(selectedRepo, item.path);
-                        } else {
-                          openRepoFile(item);
-                        }
-                      }}
-                    >
-                      <span className="cp-mini-repo-icon">
-                        {item.type === "dir" ? "📁" : "📄"}
-                      </span>
-                      <span className="cp-mini-repo-info">
-                        <strong>{item.name}</strong>
-                        <small>{item.type === "dir" ? "Folder" : "File"}</small>
-                      </span>
-                    </button>
-                  ))}
+                  {repoContents.map((item) => {
+                    const isImage = isImageFile(item.name);
+                    return (
+                      <button
+                        className="cp-mini-repo"
+                        key={item.path}
+                        type="button"
+                        onClick={() => {
+                          if (item.type === "dir") {
+                            fetchRepoContents(selectedRepo, item.path);
+                          } else if (isImage) {
+                            openImageFile(item);
+                          } else {
+                            openRepoFile(item);
+                          }
+                        }}
+                      >
+                        <span className="cp-mini-repo-icon">
+                          {item.type === "dir" ? "📁" : isImage ? "🖼️" : "📄"}
+                        </span>
+                        <span className="cp-mini-repo-info">
+                          <strong>{item.name}</strong>
+                          <small>
+                            {item.type === "dir"
+                              ? "Folder"
+                              : isImage
+                              ? "Image"
+                              : "File"}
+                          </small>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </>
