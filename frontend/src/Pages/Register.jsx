@@ -1,12 +1,14 @@
 import { useState } from "react";
 import "./Register.css";
 
+// Registration view handling new user account creation and navigation to login
 function Register({ goToLogin }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
 
+  // Submits registration credentials to account creation endpoint
   const handleRegister = async (e) => {
     e.preventDefault();
 
@@ -16,11 +18,7 @@ function Register({ goToLogin }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          name,
-          email,
-          password,
-        }),
+        body: JSON.stringify({ name, email, password }),
       });
 
       const data = await response.json();
@@ -32,23 +30,18 @@ function Register({ goToLogin }) {
         setPassword("");
       }
     } catch (error) {
-      console.log(error);
-      setMessage("Server se connection nahi ho raha.");
+      console.error("Registration submission error:", error);
+      setMessage("Unable to connect to the server.");
     }
   };
 
   return (
     <div className="register-page">
       <div className="register-card">
-
         <h1 className="register-title">Create Account</h1>
-
-        <p className="register-subtitle">
-          Create your account to get started
-        </p>
+        <p className="register-subtitle">Create your account to get started</p>
 
         <form className="register-form" onSubmit={handleRegister}>
-
           <input
             className="register-input"
             type="text"
@@ -76,18 +69,16 @@ function Register({ goToLogin }) {
           <button className="register-button" type="submit">
             Create Account
           </button>
-
         </form>
 
         <p className="register-message">{message}</p>
 
         <p>
           Already have an account?{" "}
-          <button onClick={goToLogin}>
+          <button type="button" onClick={goToLogin}>
             Login
           </button>
         </p>
-
       </div>
     </div>
   );

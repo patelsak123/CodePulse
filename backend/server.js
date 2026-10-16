@@ -1,392 +1,202 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-const User = require("./models/User");
 const bcrypt = require("bcrypt");
 require("dotenv").config();
 
-const app = express();
-const PORT = 5001;
+const User = require("./models/User");
+const {
+  fetchUserRepositories,
+  fetchRepositoryContents,
+  fetchFileContent,
+  fetchImageBuffer,
+  collectRepositorySource,
+} = require("./services/githubService");
+const { analyzeRepositoryWithGemini } = require("./services/geminiService");
 
-// =======================
-// Middleware
-// =======================
+const app = express();
+const PORT = process.env.PORT || 5001;
+
+// Configures CORS and JSON body-parsing middleware
 app.use(cors());
 app.use(express.json());
 
-// =======================
-// Home Route
-// =======================
+// Basic health check route
 app.get("/", (req, res) => {
   res.status(200).send("HELLO BACKEND");
 });
 
-// =======================
-// Register API
-// =======================
+// Registers a new user with hashed password credentials
 app.post("/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // Check empty fields
     if (!name || !email || !password) {
-      return res.status(400).json({
-        message: "Please fill all fields",
-      });
+      return res.status(400).json({ message: "Please fill all fields" });
     }
 
-    // Check existing user
     const existingUser = await User.findOne({ email });
-
     if (existingUser) {
-      return res.status(400).json({
-        message: "Email already registered",
-      });
+      return res.status(400).json({ message: "Email already registered" });
     }
 
-    // Create new user
     const hashedPassword = await bcrypt.hash(password, 10);
-
-const newUser = new User({
-  name,
-  email,
-  password: hashedPassword,
-});
-
-    // Save user to MongoDB
+    const newUser = new User({ name, email, password: hashedPassword });
     await newUser.save();
 
-    res.status(201).json({
-      message: "User registered successfully!",
-    });
+    return res.status(201).json({ message: "User registered successfully!" });
   } catch (error) {
-    console.log("Registration Error:", error);
-
-    res.status(500).json({
-      message: "Registration failed",
-      error: error.message,
-    });
+    console.error("Registration Error:", error.message);
+    return res.status(500).json({ message: "Registration failed", error: error.message });
   }
 });
-// ========================
-// Login API
-// ========================
 
+// Authenticates user credentials and returns session user details
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check fields
     if (!email || !password) {
-      return res.status(400).json({
-        message: "Please enter email and password",
-      });
+      return res.status(400).json({ message: "Please enter email and password" });
     }
 
-    // Find user
     const user = await User.findOne({ email });
-
     if (!user) {
-      return res.status(400).json({
-        message: "Invalid email or password",
-      });
+      return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    // Check password
-    const isPasswordCorrect = await bcrypt.compare(
-      password,
-      user.password
-    );
-
+    const isPasswordCorrect = await bcrypt.compare(password, user.password);
     if (!isPasswordCorrect) {
-      return res.status(400).json({
-        message: "Invalid email or password",
-      });
+      return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    // Login successful
-    res.status(200).json({
+    return res.status(200).json({
       message: "Login successful!",
-      user: {
-        name: user.name,
-        email: user.email,
-      },
+      user: { name: user.name, email: user.email },
     });
-
   } catch (error) {
-    console.log("Login Error:", error);
-
-    res.status(500).json({
-      message: "Login failed",
-      error: error.message,
-    });
+    console.error("Login Error:", error.message);
+    return res.status(500).json({ message: "Login failed", error: error.message });
   }
 });
 
-// Fetches repositories accessible to the configured GitHub token.
+// Retrieves repositories accessible to the configured GitHub token
 app.get("/api/github/repos", async (req, res) => {
   try {
-    
-const response = await fetch(
-  "https://api.github.com/user/repos?sort=updated&per_page=30",
-  {
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-  }
-);
-
-    if (!response.ok) {
-      return res.status(response.status).json({
-        message: "GitHub API request failed",
-      });
-    }
-
-    const repos = await response.json();
-
-    res.json(
-      repos.map((repo) => ({
-        id: repo.id,
-        name: repo.name,
-        fullName: repo.full_name,
-        description: repo.description,
-        language: repo.language,
-        isPrivate: repo.private,
-        url: repo.html_url,
-        stars: repo.stargazers_count,
-      }))
-    );
+    const repos = await fetchUserRepositories();
+    return res.status(200).json(repos);
   } catch (error) {
-    console.error("GitHub API Error:", error.message);
-    res.status(500).json({ message: "Unable to fetch repositories" });
+    console.error("GitHub Repos Error:", error.message);
+    return res.status(500).json({ message: error.message || "Unable to fetch repositories" });
   }
 });
 
- // ===============================
- // REPOSITORY FILE TREE API
- // ===============================
-
+// Lists repository files and folders for a given directory path
 app.get("/api/github/repos/:owner/:repo/contents", async (req, res) => {
   try {
-    // 1. Check whether GitHub token exists
-    if (!process.env.GITHUB_TOKEN) {
-      return res.status(500).json({
-        message: "GitHub token is not configured",
-      });
-    }
-
-    // 2. Get owner and repository name from URL
     const { owner, repo } = req.params;
-
-    // 3. Get optional folder path from query
-    const path = req.query.path || "";
-
-    // 4. Build GitHub API URL
-    const encodedPath = path
-      .split("/")
-      .filter(Boolean)
-      .map(encodeURIComponent)
-      .join("/");
-
-    const githubUrl =
-      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents` +
-      (encodedPath ? `/${encodedPath}` : "");
-
-    // 5. Request files and folders from GitHub
-    const response = await fetch(githubUrl, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
-
-    // 6. Handle GitHub API errors
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-
-      return res.status(response.status).json({
-        message: "Failed to fetch repository contents",
-        error: errorData.message || "GitHub API request failed",
-      });
-    }
-
-    // 7. Read GitHub response
-    const contents = await response.json();
-
-    // 8. Return a consistent list of file/folder details
-    const items = Array.isArray(contents) ? contents : [contents];
+    const folderPath = req.query.path || "";
+    const items = await fetchRepositoryContents(owner, repo, folderPath);
 
     return res.status(200).json({
       owner,
       repository: repo,
-      path,
-      contents: items.map((item) => ({
-        name: item.name,
-        path: item.path,
-        type: item.type,
-        size: item.size,
-        url: item.html_url,
-        downloadUrl: item.download_url,
-      })),
+      path: folderPath,
+      contents: items,
     });
   } catch (error) {
-    console.error("File Tree API Error:", error.message);
-
-    return res.status(500).json({
-      message: "Unable to fetch repository contents",
-    });
+    console.error("Repository Contents Error:", error.message);
+    return res.status(500).json({ message: error.message || "Unable to fetch repository contents" });
   }
 });
 
+// Retrieves the decoded text content of a single repository file
 app.get("/api/github/repos/:owner/:repo/file", async (req, res) => {
   try {
-    if (!process.env.GITHUB_TOKEN) {
-      return res.status(500).json({
-        message: "GitHub token is not configured",
-      });
-    }
-
     const { owner, repo } = req.params;
-    const path = req.query.path;
+    const filePath = req.query.path;
 
-    if (!path) {
-      return res.status(400).json({
-        message: "File path is required",
-      });
-    }
-
-    const encodedPath = path
-      .split("/")
-      .map(encodeURIComponent)
-      .join("/");
-
-    const url =
-      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}`;
-
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(response.status).json({
-        message: data.message || "Unable to fetch file",
-      });
-    }
-
-    if (data.type !== "file" || !data.content) {
-      return res.status(400).json({
-        message: "This path is not a supported file",
-      });
-    }
-
-    const content = Buffer.from(data.content, "base64").toString("utf8");
-
-    return res.json({
-      name: data.name,
-      path: data.path,
-      content,
-    });
-  } catch (error) {
-    console.error("File Content API Error:", error.message);
-
-    return res.status(500).json({
-      message: "Unable to fetch file content",
-    });
-  }
-});
-
-app.get("/api/github/repos/:owner/:repo/image", async (req, res) => {
-  try {
-    if (!process.env.GITHUB_TOKEN) {
-      return res.status(500).json({ message: "GitHub token is not configured" });
-    }
-    const { owner, repo } = req.params;
-    const path = req.query.path;
-    if (!path) {
+    if (!filePath) {
       return res.status(400).json({ message: "File path is required" });
     }
-    const encodedPath = path.split("/").map(encodeURIComponent).join("/");
-    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}`;
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      return res.status(response.status).json({ message: data.message || "Unable to fetch file" });
-    }
-    if (data.type !== "file") {
-      return res.status(400).json({ message: "Path is not a file" });
-    }
-    let buffer;
-    if (data.content) {
-      buffer = Buffer.from(data.content.replace(/\s/g, ""), "base64");
-    } else if (data.download_url) {
-      const rawRes = await fetch(data.download_url, {
-        headers: {
-          Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-        },
-      });
-      if (!rawRes.ok) {
-        return res.status(rawRes.status).json({ message: "Unable to download image binary" });
-      }
-      const arrayBuffer = await rawRes.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
-    } else {
-      return res.status(400).json({ message: "Image content not available" });
-    }
 
-    const ext = path.split('.').pop().toLowerCase();
-    const mimeMap = {
-      png: "image/png",
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      gif: "image/gif",
-      webp: "image/webp",
-      svg: "image/svg+xml",
-      bmp: "image/bmp",
-      ico: "image/x-icon",
-      avif: "image/avif",
-    };
-    const mimeType = mimeMap[ext] || "application/octet-stream";
-    res.setHeader("Content-Type", mimeType);
-    res.setHeader("Cache-Control", "public, max-age=300");
-    return res.send(buffer);
+    const fileData = await fetchFileContent(owner, repo, filePath);
+    return res.status(200).json(fileData);
   } catch (error) {
-    console.error("Image API Error:", error.message);
-    res.status(500).json({ message: "Unable to fetch image" });
+    console.error("Repository File Error:", error.message);
+    return res.status(500).json({ message: error.message || "Unable to fetch file content" });
   }
 });
 
-// =======================
-// MongoDB Connection
-// =======================
-const MONGO_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/codepulse";
+// Streams raw image binary with matching Content-Type header
+app.get("/api/github/repos/:owner/:repo/image", async (req, res) => {
+  try {
+    const { owner, repo } = req.params;
+    const imagePath = req.query.path;
 
+    if (!imagePath) {
+      return res.status(400).json({ message: "File path is required" });
+    }
+
+    const { buffer, mimeType } = await fetchImageBuffer(owner, repo, imagePath);
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Cache-Control", "public, max-age=300");
+    return res.status(200).send(buffer);
+  } catch (error) {
+    console.error("Repository Image Error:", error.message);
+    return res.status(500).json({ message: error.message || "Unable to fetch image" });
+  }
+});
+
+// Collects repository source files and runs AI code analysis
+app.post("/api/analysis/start", async (req, res) => {
+  try {
+    const { repository } = req.body;
+
+    if (!repository || !repository.fullName || !repository.name) {
+      return res.status(400).json({ message: "Invalid repository information provided" });
+    }
+
+    const [owner, repoName] = repository.fullName.split("/");
+    if (!owner || !repoName) {
+      return res.status(400).json({ message: "Invalid repository full name format (expected owner/repo)" });
+    }
+
+    const collectedFiles = await collectRepositorySource(owner, repoName);
+    if (collectedFiles.length === 0) {
+      return res.status(400).json({
+        message: "No supported source-code files were found in this repository.",
+      });
+    }
+
+    const analysis = await analyzeRepositoryWithGemini(repository.fullName, collectedFiles);
+
+    return res.status(200).json({
+      status: "completed",
+      repository: repository.fullName,
+      summary: analysis.summary,
+      architecture: analysis.architecture,
+      codeQuality: analysis.codeQuality,
+      issues: analysis.issues,
+      recommendations: analysis.recommendations,
+      fileCount: collectedFiles.length,
+      files: collectedFiles.map((f) => ({ path: f.path })),
+      analyzedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Analysis Workflow Error:", error.message);
+    return res.status(500).json({ message: error.message || "Failed to analyze repository" });
+  }
+});
+
+// Establishes connection to MongoDB database
+const MONGO_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/codepulse";
 mongoose
   .connect(MONGO_URI)
-  .then(() => {
-    console.log("MongoDB connected successfully!");
-  })
-  .catch((error) => {
-    console.error("MongoDB connection error:", error.message);
-  });
+  .then(() => console.log("MongoDB connected successfully!"))
+  .catch((err) => console.error("MongoDB connection error:", err.message));
 
-// =======================
-// Start Server
-// =======================
+// Starts Express server on configured port
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log("GitHub token loaded:", Boolean(process.env.GITHUB_TOKEN));

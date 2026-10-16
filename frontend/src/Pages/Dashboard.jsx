@@ -1,29 +1,92 @@
 import { useEffect, useState } from "react";
 import RepositoriesPage from "./RepositoriesPage";
+import AnalysisPage from "./AnalysisPage";
+import PanelHeading from "../components/PanelHeading";
 import "./Dashboard.css";
+
+// Reusable card showing a single metric with icon, value and sparkline graphic
+function MetricCard({ icon, label, value, description, tone, points }) {
+  return (
+    <article className={`cp-metric-card tone-${tone}`}>
+      <div className="cp-metric-heading">
+        <span className="cp-metric-icon">{icon}</span>
+        <span className="cp-metric-label">{label}</span>
+        <span className="cp-metric-menu">•••</span>
+      </div>
+      <div className="cp-metric-value">{value}</div>
+      <p>{description}</p>
+      <div className="cp-sparkline" aria-hidden="true">
+        <svg viewBox="0 0 130 40" preserveAspectRatio="none">
+          <polyline points={points} />
+        </svg>
+      </div>
+    </article>
+  );
+}
+
+// Single insight row displaying tone icon, title and description
+function InsightRow({ icon, tone, title, text }) {
+  return (
+    <div className="cp-insight-row">
+      <span className={`cp-insight-icon tone-${tone}`}>{icon}</span>
+      <div>
+        <strong>{title}</strong>
+        <p>{text}</p>
+      </div>
+    </div>
+  );
+}
+
+// Visual breakdown bars for top repository programming languages
+function LanguageBreakdown({ repositories }) {
+  const counts = repositories.reduce((result, repo) => {
+    const language = repo.language || "Other";
+    result[language] = (result[language] || 0) + 1;
+    return result;
+  }, {});
+
+  const languages = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+
+  const total = repositories.length;
+
+  return (
+    <div className="cp-language-list">
+      {languages.map(([language, count], index) => (
+        <div className="cp-language-row" key={language}>
+          <div className="cp-language-label">
+            <span className={`cp-language-color color-${index}`} />
+            <span>{language}</span>
+            <strong>{count}</strong>
+          </div>
+          <div className="cp-language-track">
+            <span
+              className={`cp-language-fill color-${index}`}
+              style={{ width: `${(count / total) * 100}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // Main Dashboard component handling navigation, repository overview and workspace metrics
 function Dashboard({ user, onLogout }) {
-  // Navigation and active view state
   const [activePage, setActivePage] = useState("dashboard");
-  // Repository dataset and selection state
   const [repositories, setRepositories] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
   const [repoContents, setRepoContents] = useState([]);
-  // Global repository load state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  // Active file content view state
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileLoading, setFileLoading] = useState(false);
-  // Folder directory contents load state
   const [contentsLoading, setContentsLoading] = useState(false);
   const [contentsError, setContentsError] = useState("");
 
-  // Extracted user first name for welcome display
   const firstName = user?.name?.trim().split(/\s+/)[0] || "Developer";
 
-  // Sidebar navigation links configuration
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: "▦" },
     { id: "repositories", label: "Repositories", icon: "⌘" },
@@ -31,7 +94,7 @@ function Dashboard({ user, onLogout }) {
     { id: "history", label: "History", icon: "↺" },
   ];
 
-  // Fetch all repositories from backend API on initial mount
+  // Fetches repositories from the backend GitHub API on initial mount
   useEffect(() => {
     const fetchRepositories = async () => {
       try {
@@ -51,10 +114,10 @@ function Dashboard({ user, onLogout }) {
     fetchRepositories();
   }, []);
 
-  // Switch between workspace pages
+  // Switches between workspace navigation views
   const handleNavigation = (page) => setActivePage(page);
 
-  // Fetch directory contents or files for a given repository path
+  // Fetches directory contents for a repository path and opens the repository view
   const fetchRepoContents = async (repo, path = "") => {
     setSelectedRepo(repo);
     setSelectedFile(null);
@@ -80,7 +143,7 @@ function Dashboard({ user, onLogout }) {
     }
   };
 
-  // Load code content of a specific repository file
+  // Loads code content for a specific repository file
   const openRepoFile = async (item) => {
     if (!selectedRepo) return;
     setSelectedFile({ name: item.name, path: item.path, content: "" });
@@ -105,15 +168,18 @@ function Dashboard({ user, onLogout }) {
     }
   };
 
-  // Compute active page title for top bar
+  // Sets active repository selection and navigates to the analysis workspace
+  const handleAnalyzeRepo = (repo) => {
+    setSelectedRepo(repo);
+    setActivePage("analysis");
+  };
+
   const pageTitle =
     navItems.find((item) => item.id === activePage)?.label || "Dashboard";
 
   return (
     <div className="cp-app">
-      {/* Sidebar navigation container */}
       <aside className="cp-sidebar">
-        {/* Workspace branding logo and title */}
         <div className="cp-brand">
           <div className="cp-brand-icon" />
           <div>
@@ -122,7 +188,6 @@ function Dashboard({ user, onLogout }) {
           </div>
         </div>
 
-        {/* Navigation menu list */}
         <div className="cp-nav-label">WORKSPACE</div>
         <nav className="cp-navigation" aria-label="Main navigation">
           {navItems.map((item) => (
@@ -141,7 +206,6 @@ function Dashboard({ user, onLogout }) {
           ))}
         </nav>
 
-        {/* User profile summary and logout button at bottom */}
         <div className="cp-sidebar-bottom">
           <div className="cp-user-avatar">{firstName.charAt(0).toUpperCase()}</div>
           <div className="cp-user-summary">
@@ -160,9 +224,7 @@ function Dashboard({ user, onLogout }) {
         </div>
       </aside>
 
-      {/* Main workspace layout area */}
       <main className="cp-main">
-        {/* Workspace top navigation bar */}
         <header className="cp-topbar">
           <div>
             <div className="cp-breadcrumb">Workspace / {pageTitle}</div>
@@ -174,12 +236,9 @@ function Dashboard({ user, onLogout }) {
           </div>
         </header>
 
-        {/* Dynamic page content container */}
         <div className="cp-content">
-          {/* Main dashboard overview view */}
           {activePage === "dashboard" && (
             <>
-              {/* Welcome banner section */}
               <section className="cp-welcome">
                 <div className="cp-welcome-copy">
                   <span className="cp-eyebrow">ENGINEERING PERFORMANCE WORKSPACE</span>
@@ -200,7 +259,6 @@ function Dashboard({ user, onLogout }) {
                 <div className="cp-welcome-art" aria-hidden="true" />
               </section>
 
-              {/* Key performance metrics grid */}
               <section className="cp-metrics-grid">
                 <MetricCard
                   icon="⌘"
@@ -242,9 +300,7 @@ function Dashboard({ user, onLogout }) {
                 />
               </section>
 
-              {/* Analytics overview and quality gauge panel grid */}
               <div className="cp-analytics-grid">
-                {/* Repository trends and quick list panel */}
                 <section className="cp-panel cp-trends-panel">
                   <PanelHeading
                     title="Repository overview"
@@ -262,7 +318,6 @@ function Dashboard({ user, onLogout }) {
                     <div className="cp-summary-icon">⌘</div>
                   </div>
 
-                  {/* Dynamic repository snapshot listing */}
                   {loading ? (
                     <div className="cp-message-state">Loading your repositories…</div>
                   ) : error ? (
@@ -300,7 +355,6 @@ function Dashboard({ user, onLogout }) {
                     </div>
                   )}
 
-                  {/* Navigation shortcut to full repositories tab */}
                   {!loading && !error && repositories.length > 4 && (
                     <button
                       className="cp-text-button"
@@ -312,7 +366,6 @@ function Dashboard({ user, onLogout }) {
                   )}
                 </section>
 
-                {/* Code quality indicators and progress preview */}
                 <section className="cp-panel cp-quality-panel">
                   <PanelHeading
                     title="Quality vs speed"
@@ -351,9 +404,7 @@ function Dashboard({ user, onLogout }) {
                 </section>
               </div>
 
-              {/* Bottom panels: Insights, language breakdown, and recent repositories */}
               <div className="cp-bottom-grid">
-                {/* AI & workspace developer insights panel */}
                 <section className="cp-panel cp-insights-panel">
                   <PanelHeading title="Developer insights" subtitle="Your workspace at a glance" />
                   <InsightRow
@@ -372,23 +423,22 @@ function Dashboard({ user, onLogout }) {
                     icon="✳"
                     tone="purple"
                     title="AI code intelligence"
-                    text="Gemini-powered analysis will be added in the next phase."
+                    text="Gemini-powered code intelligence is active in your workspace."
                   />
                   <InsightRow
                     icon="◇"
                     tone="teal"
                     title="Code health metrics"
-                    text="Health scores will appear after repository analysis is implemented."
+                    text="Inspect your repositories to view detailed AI architectural findings."
                   />
                   <InsightRow
                     icon="↗"
                     tone="amber"
                     title="Next milestone"
-                    text="Explore a repository and prepare it for codebase analysis."
+                    text="Explore a repository and run full codebase intelligence."
                   />
                 </section>
 
-                {/* Stars counter and repository language breakdown panel */}
                 <section className="cp-panel cp-activity-panel">
                   <PanelHeading title="Workspace activity" subtitle="GitHub repository snapshot" />
                   <div className="cp-activity-total">
@@ -421,7 +471,6 @@ function Dashboard({ user, onLogout }) {
                   )}
                 </section>
 
-                {/* Quick shortcut to recently updated repositories */}
                 <section className="cp-panel cp-recent-panel">
                   <PanelHeading title="Recently available" subtitle="Repositories from your GitHub account" />
                   {loading ? (
@@ -451,17 +500,15 @@ function Dashboard({ user, onLogout }) {
                 </section>
               </div>
 
-              {/* Workspace footer */}
               <footer className="cp-footer">
                 <span>
                   CodePulse <span className="cp-footer-dot">●</span> Developer Intelligence
                 </span>
-                <span>AI analysis features are under development.</span>
+                <span>AI code intelligence active.</span>
               </footer>
             </>
           )}
 
-          {/* Repositories page delegated to modular component */}
           {activePage === "repositories" && (
             <RepositoriesPage
               loading={loading}
@@ -479,116 +526,18 @@ function Dashboard({ user, onLogout }) {
               setRepoContents={setRepoContents}
               setSelectedFile={setSelectedFile}
               setContentsError={setContentsError}
+              onAnalyze={handleAnalyzeRepo}
             />
           )}
 
-          {/* Placeholders for upcoming AI analysis and history features */}
-          {["analysis", "history"].includes(activePage) && (
-            <section className="cp-panel cp-future-panel">
-              <div className="cp-future-icon">
-                {activePage === "analysis" ? "✳" : "↺"}
-              </div>
-              <span className="cp-eyebrow">COMING IN THE NEXT PHASE</span>
-              <h2>{activePage === "analysis" ? "AI Code Analysis" : "Analysis History"}</h2>
-              <p>
-                {activePage === "analysis"
-                  ? "Gemini-powered codebase summaries, code quality insights and improvement suggestions will live here."
-                  : "Your past code analyses and generated recommendations will be stored here once analysis history is implemented."}
-              </p>
-              <button
-                className="cp-secondary-button"
-                type="button"
-                onClick={() => handleNavigation("repositories")}
-              >
-                Explore repositories
-              </button>
-            </section>
+          {activePage === "analysis" && (
+            <AnalysisPage
+              selectedRepo={selectedRepo}
+              onBack={() => handleNavigation("repositories")}
+            />
           )}
         </div>
       </main>
-    </div>
-  );
-}
-
-// Reusable card showing a single metric with icon, value and sparkline graphic
-function MetricCard({ icon, label, value, description, tone, points }) {
-  return (
-    <article className={`cp-metric-card tone-${tone}`}>
-      <div className="cp-metric-heading">
-        <span className="cp-metric-icon">{icon}</span>
-        <span className="cp-metric-label">{label}</span>
-        <span className="cp-metric-menu">•••</span>
-      </div>
-      <div className="cp-metric-value">{value}</div>
-      <p>{description}</p>
-      <div className="cp-sparkline" aria-hidden="true">
-        <svg viewBox="0 0 130 40" preserveAspectRatio="none">
-          <polyline points={points} />
-        </svg>
-      </div>
-    </article>
-  );
-}
-
-// Reusable panel header for dashboard cards
-function PanelHeading({ title, subtitle, tag }) {
-  return (
-    <div className="cp-panel-heading">
-      <div>
-        <h2>{title}</h2>
-        <p>{subtitle}</p>
-      </div>
-      {tag && <span className="cp-panel-tag">{tag}</span>}
-    </div>
-  );
-}
-
-// Single insight row displaying tone icon, title and description
-function InsightRow({ icon, tone, title, text }) {
-  return (
-    <div className="cp-insight-row">
-      <span className={`cp-insight-icon tone-${tone}`}>{icon}</span>
-      <div>
-        <strong>{title}</strong>
-        <p>{text}</p>
-      </div>
-    </div>
-  );
-}
-
-// Visual breakdown bars for top repository programming languages
-function LanguageBreakdown({ repositories }) {
-  // Tally repository counts per programming language
-  const counts = repositories.reduce((result, repo) => {
-    const language = repo.language || "Other";
-    result[language] = (result[language] || 0) + 1;
-    return result;
-  }, {});
-
-  // Extract top 4 languages sorted by frequency
-  const languages = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4);
-
-  const total = repositories.length;
-
-  return (
-    <div className="cp-language-list">
-      {languages.map(([language, count], index) => (
-        <div className="cp-language-row" key={language}>
-          <div className="cp-language-label">
-            <span className={`cp-language-color color-${index}`} />
-            <span>{language}</span>
-            <strong>{count}</strong>
-          </div>
-          <div className="cp-language-track">
-            <span
-              className={`cp-language-fill color-${index}`}
-              style={{ width: `${(count / total) * 100}%` }}
-            />
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

@@ -1,21 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
+import PanelHeading from "../components/PanelHeading";
 import "./Dashboard.css";
 
-// Reusable section header displaying title, subtitle and an optional status tag
-function PanelHeading({ title, subtitle, tag }) {
-  return (
-    <div className="cp-panel-heading">
-      <div>
-        <h2>{title}</h2>
-        <p>{subtitle}</p>
-      </div>
-      {tag && <span className="cp-panel-tag">{tag}</span>}
-    </div>
-  );
-}
-
-// Card displaying repository details, stars, language badge and explore button
-function RepositoryCard({ repo, onExplore }) {
+// Displays repository details, language tag, stars, and navigation actions
+function RepositoryCard({ repo, onExplore, onAnalyze }) {
   return (
     <article className="cp-repo-card">
       <div className="cp-repo-card-top">
@@ -31,18 +19,18 @@ function RepositoryCard({ repo, onExplore }) {
         </span>
         <span>★ {repo.stars}</span>
         <button
-          className="cp-secondary-button"
+          className="cp-primary-button"
           type="button"
-          onClick={() => onExplore(repo)}
+          onClick={() => onAnalyze(repo)}
         >
-          Explore
+          Analyze Repository
         </button>
       </div>
     </article>
   );
 }
 
-// Repositories view handling repository browsing, file navigation, image viewing, and code viewing
+// Repositories view handling repository browsing, file exploration, code viewing, and image rendering
 function RepositoriesPage({
   loading,
   error,
@@ -59,11 +47,12 @@ function RepositoriesPage({
   setRepoContents,
   setSelectedFile,
   setContentsError,
+  onAnalyze,
 }) {
   const [imageCache, setImageCache] = useState({});
   const createdUrlsRef = useRef([]);
 
-  // Revoke any created object URLs on unmount to avoid memory leaks
+  // Revokes created image object URLs on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
       createdUrlsRef.current.forEach((url) => {
@@ -74,10 +63,12 @@ function RepositoriesPage({
     };
   }, []);
 
+  // Checks whether a filename has a supported raster or vector image extension
   const isImageFile = (fileName) => {
     return /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i.test(fileName || "");
   };
 
+  // Loads repository image from backend proxy and creates an object URL preview
   const openImageFile = async (item) => {
     if (!selectedRepo) return;
     const cacheKey = `${selectedRepo.fullName}:${item.path}`;
@@ -116,7 +107,6 @@ function RepositoriesPage({
       createdUrlsRef.current.push(objectUrl);
 
       setImageCache((prev) => ({ ...prev, [cacheKey]: objectUrl }));
-
       setSelectedFile({
         name: item.name,
         path: item.path,
@@ -140,7 +130,6 @@ function RepositoriesPage({
     <section className="cp-panel cp-repositories-page">
       {selectedRepo ? (
         <>
-          {/* Back button aligned to top-left corner */}
           <div className="cp-back-wrapper">
             <button
               className="cp-back-button"
@@ -156,14 +145,12 @@ function RepositoriesPage({
             </button>
           </div>
 
-          {/* Repository file explorer header */}
           <PanelHeading
             title={selectedRepo.name}
             subtitle={selectedRepo.fullName}
             tag="FILE EXPLORER"
           />
 
-          {/* Conditional rendering for loading, error or folder contents */}
           {contentsLoading ? (
             <div className="cp-message-state">Loading repository files…</div>
           ) : contentsError ? (
@@ -179,7 +166,6 @@ function RepositoriesPage({
             </div>
           ) : (
             <>
-              {/* File content viewer modal/box */}
               {selectedFile && (
                 <div className="cp-file-viewer">
                   <div className="cp-file-viewer-header">
@@ -256,7 +242,6 @@ function RepositoriesPage({
                 </div>
               )}
 
-              {/* List of files and subdirectories */}
               {repoContents.length === 0 ? (
                 <div className="cp-message-state">
                   This folder is empty, or it contains no accessible files.
@@ -303,14 +288,12 @@ function RepositoriesPage({
         </>
       ) : (
         <>
-          {/* Main repositories header */}
           <PanelHeading
             title="Your repositories"
             subtitle="Repositories accessible to your configured GitHub token"
             tag={loading ? "SYNCING" : error ? "OFFLINE" : "CONNECTED"}
           />
 
-          {/* Conditional rendering for repository listing states */}
           {loading ? (
             <div className="cp-message-state">Loading repositories…</div>
           ) : error ? (
@@ -335,6 +318,7 @@ function RepositoriesPage({
                   key={repo.id}
                   repo={repo}
                   onExplore={fetchRepoContents}
+                  onAnalyze={onAnalyze}
                 />
               ))}
             </div>
